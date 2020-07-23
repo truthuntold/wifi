@@ -347,20 +347,38 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            NetworkInfo info = intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO);
-            if (info.getState() == NetworkInfo.State.DISCONNECTED && willLink) {
-                wifiManager.enableNetwork(netId, true);
-                wifiManager.reconnect();
-                result.success(1);
-                willLink = false;
-                clearMethodCallAndResult();
+            NetworkInfo netInfo = intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO);
+            if (netInfo != null && willLink) {
+                switch (netInfo.getState()) {
+                    case DISCONNECTED:
+                        wifiManager.enableNetwork(netId, true);
+                        wifiManager.reconnect();
+                        result.success(1);
+                        willLink = false;
+                        clearMethodCallAndResult();
+                        break;
+                    case CONNECTED:
+                        WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+                        if (wifiInfo != null && netId == wifiInfo.getNetworkId()) {
+                            result.success(1);
+                            willLink = false;
+                            clearMethodCallAndResult();
+                        }
+                        break;
+                }
             }
         }
 
         public void connect(int netId) {
             this.netId = netId;
             willLink = true;
-            wifiManager.disconnect();
+            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+            if (wifiInfo != null && wifiInfo.getNetworkId() != -1) {
+                wifiManager.disconnect();
+            } else {
+                wifiManager.enableNetwork(netId, true);
+                wifiManager.reconnect();
+            }
         }
     }
 }
