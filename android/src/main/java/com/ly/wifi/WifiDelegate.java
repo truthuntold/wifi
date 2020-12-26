@@ -422,10 +422,10 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
                     @Override
                     public void run() {
                         result.success(1);
+                        clearMethodCallAndResult();
                     }
                 });
                 waitNetwork = false;
-                clearMethodCallAndResult();
             }
         }
     }
