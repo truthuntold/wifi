@@ -19,6 +19,8 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -49,7 +51,7 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
     private final PermissionManager permissionManager;
     private static final int REQUEST_ACCESS_FINE_LOCATION_PERMISSION = 1;
     private static final int REQUEST_CHANGE_WIFI_STATE_PERMISSION = 2;
-    private final NetworkChangeReceiver networkReceiver;
+    final NetworkChangeReceiver networkReceiver;
     private final NetworkChangeCallback networkCallback =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? new NetworkChangeCallback() : null;
 
@@ -260,8 +262,8 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
                 requestNetwork(ssid, password);
             } else {
                 result.success(0);
+                clearMethodCallAndResult();
             }
-            clearMethodCallAndResult();
             return;
         }
 
@@ -416,7 +418,12 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
         public void onAvailable(@NonNull Network network) {
             if (waitNetwork) {
                 connectivityManager.bindProcessToNetwork(network);
-                result.success(1);
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        result.success(1);
+                    }
+                });
                 waitNetwork = false;
                 clearMethodCallAndResult();
             }

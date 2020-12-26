@@ -1,5 +1,6 @@
 package com.ly.wifi;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
@@ -22,8 +23,12 @@ public class WifiPlugin implements MethodCallHandler {
 
     public static void registerWith(Registrar registrar) {
         final MethodChannel channel = new MethodChannel(registrar.messenger(), "plugins.ly.com/wifi");
-        WifiManager wifiManager = (WifiManager) registrar.activeContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        final WifiDelegate delegate = new WifiDelegate(registrar.activity(), wifiManager);
+        final Context context = registrar.activeContext().getApplicationContext();
+        final Activity activity = registrar.activity();
+
+        WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        final WifiDelegate delegate = new WifiDelegate(activity, wifiManager, connectivityManager);
         registrar.addRequestPermissionsResultListener(delegate);
 
         // support Android O,listen network disconnect event
