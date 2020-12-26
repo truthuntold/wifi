@@ -1,19 +1,27 @@
 package com.ly.wifi;
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
+import android.net.NetworkRequest;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiNetworkSpecifier;
+import android.net.wifi.WifiNetworkSuggestion;
 import android.os.Build;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
 import java.net.Inet4Address;
@@ -21,6 +29,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -29,23 +38,28 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
 
+import static android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE;
+import static android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS;
+
 public class
 WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
-    private Activity activity;
-    private WifiManager wifiManager;
-    private PermissionManager permissionManager;
+    private final Activity activity;
+    private final WifiManager wifiManager;
+    private final ConnectivityManager connectivityManager;
+    private final PermissionManager permissionManager;
     private static final int REQUEST_ACCESS_FINE_LOCATION_PERMISSION = 1;
     private static final int REQUEST_CHANGE_WIFI_STATE_PERMISSION = 2;
-    NetworkChangeReceiver networkReceiver;
+    private final NetworkChangeReceiver networkReceiver;
+    private final NetworkChangeCallback networkCallback =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? new NetworkChangeCallback() : null;
 
     interface PermissionManager {
         boolean isPermissionGranted(String permissionName);
-
         void askForPermission(String permissionName, int requestCode);
     }
 
-    public WifiDelegate(final Activity activity, final WifiManager wifiManager) {
-        this(activity, wifiManager, null, null, new PermissionManager() {
+    public WifiDelegate(final Activity activity, final WifiManager wifiManager, ConnectivityManager connectivityManager) {
+        this(activity, wifiManager, connectivityManager, null, null, new PermissionManager() {
 
             @Override
             public boolean isPermissionGranted(String permissionName) {
@@ -65,15 +79,17 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
     WifiDelegate(
             Activity activity,
             WifiManager wifiManager,
+            ConnectivityManager connectivityManager,
             MethodChannel.Result result,
             MethodCall methodCall,
             PermissionManager permissionManager) {
-        this.networkReceiver = new NetworkChangeReceiver();
         this.activity = activity;
         this.wifiManager = wifiManager;
+        this.connectivityManager = connectivityManager;
         this.result = result;
         this.methodCall = methodCall;
         this.permissionManager = permissionManager;
+        this.networkReceiver = new NetworkChangeReceiver();
     }
 
     public void getSSID(MethodCall methodCall, MethodChannel.Result result) {
@@ -230,6 +246,25 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
     private void connection() {
         String ssid = methodCall.argument("ssid");
         String password = methodCall.argument("password");
+
+        // support Android 10 Q (API level 29)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            List<WifiNetworkSuggestion> suggestions =
+                    Collections.singletonList(createWifiSuggestion(ssid, password));
+
+            int status = wifiManager.addNetworkSuggestions(suggestions);
+            if (status == STATUS_NETWORK_SUGGESTIONS_SUCCESS
+                    || status == STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE) {
+                // We have successfully added our wifi for the system to consider
+                networkCallback.waitNetwork();
+                requestNetwork(ssid, password);
+            } else {
+                result.success(0);
+            }
+            clearMethodCallAndResult();
+            return;
+        }
+
         WifiConfiguration wifiConfig = createWifiConfig(ssid, password);
         if (wifiConfig == null) {
             finishWithError("unavailable", "wifi config is null!");
@@ -240,7 +275,7 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
             result.success(0);
             clearMethodCallAndResult();
         } else {
-            // support Android O
+            // support Android 8.0 O (API level 26)
             // https://stackoverflow.com/questions/50462987/android-o-wifimanager-enablenetwork-cannot-work
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                 wifiManager.enableNetwork(netId, true);
@@ -253,7 +288,37 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
         }
     }
 
-    private WifiConfiguration createWifiConfig(String ssid, String Password) {
+    @TargetApi(Build.VERSION_CODES.Q)
+    private void requestNetwork(String ssid, String password) {
+        WifiNetworkSpecifier.Builder builder = new WifiNetworkSpecifier.Builder();
+        builder.setSsid(ssid);
+        if (password != null && !password.isEmpty()) {
+            builder.setWpa2Passphrase(password);
+        }
+
+        WifiNetworkSpecifier wifiNetworkSpecifier = builder.build();
+
+        NetworkRequest nr = new NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .setNetworkSpecifier(wifiNetworkSpecifier)
+                .build();
+
+        connectivityManager.requestNetwork(nr, networkCallback);
+    }
+
+    @TargetApi(Build.VERSION_CODES.Q)
+    private WifiNetworkSuggestion createWifiSuggestion(String ssid, String password) {
+        WifiNetworkSuggestion.Builder builder = new WifiNetworkSuggestion.Builder()
+                .setSsid(ssid);
+
+        if (password != null && !password.isEmpty()) {
+            builder.setWpa2Passphrase(password);
+        }
+
+        return builder.build();
+    }
+
+    private WifiConfiguration createWifiConfig(String ssid, String password) {
         WifiConfiguration config = new WifiConfiguration();
         config.SSID = "\"" + ssid + "\"";
         config.allowedAuthAlgorithms.clear();
@@ -265,8 +330,8 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
         if (tempConfig != null) {
             wifiManager.removeNetwork(tempConfig.networkId);
         }
-        if (Password != null && !Password.isEmpty()) {
-            config.preSharedKey = "\"" + Password + "\"";
+        if (password != null && !password.isEmpty()) {
+            config.preSharedKey = "\"" + password + "\"";
             config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
         } else {
             config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
@@ -339,9 +404,28 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
         result = null;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private class NetworkChangeCallback extends ConnectivityManager.NetworkCallback {
+        private boolean waitNetwork = false;
+
+        public void waitNetwork() {
+            waitNetwork = true;
+        }
+
+        @Override
+        public void onAvailable(@NonNull Network network) {
+            if (waitNetwork) {
+                connectivityManager.bindProcessToNetwork(network);
+                result.success(1);
+                waitNetwork = false;
+                clearMethodCallAndResult();
+            }
+        }
+    }
+
     // support Android O
     // https://stackoverflow.com/questions/50462987/android-o-wifimanager-enablenetwork-cannot-work
-    public class NetworkChangeReceiver extends BroadcastReceiver {
+    private class NetworkChangeReceiver extends BroadcastReceiver {
         private int netId;
         private boolean willLink = false;
 
