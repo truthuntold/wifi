@@ -17,7 +17,6 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSpecifier;
-import android.net.wifi.WifiNetworkSuggestion;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,7 +30,6 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -39,9 +37,6 @@ import java.util.List;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
-
-import static android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE;
-import static android.net.wifi.WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS;
 
 public class
 WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
@@ -251,19 +246,8 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
 
         // support Android 10 Q (API level 29)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            List<WifiNetworkSuggestion> suggestions =
-                    Collections.singletonList(createWifiSuggestion(ssid, password));
-
-            int status = wifiManager.addNetworkSuggestions(suggestions);
-            if (status == STATUS_NETWORK_SUGGESTIONS_SUCCESS
-                    || status == STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE) {
-                // We have successfully added our wifi for the system to consider
-                networkCallback.waitNetwork();
-                requestNetwork(ssid, password);
-            } else {
-                result.success(0);
-                clearMethodCallAndResult();
-            }
+            networkCallback.waitNetwork();
+            requestNetwork(ssid, password);
             return;
         }
 
@@ -306,18 +290,6 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
                 .build();
 
         connectivityManager.requestNetwork(nr, networkCallback);
-    }
-
-    @TargetApi(Build.VERSION_CODES.Q)
-    private WifiNetworkSuggestion createWifiSuggestion(String ssid, String password) {
-        WifiNetworkSuggestion.Builder builder = new WifiNetworkSuggestion.Builder()
-                .setSsid(ssid);
-
-        if (password != null && !password.isEmpty()) {
-            builder.setWpa2Passphrase(password);
-        }
-
-        return builder.build();
     }
 
     private WifiConfiguration createWifiConfig(String ssid, String password) {
@@ -417,7 +389,6 @@ WifiDelegate implements PluginRegistry.RequestPermissionsResultListener {
         @Override
         public void onAvailable(@NonNull Network network) {
             if (waitNetwork) {
-                connectivityManager.bindProcessToNetwork(network);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
