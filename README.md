@@ -1,3 +1,28 @@
+# disclaimer
+
+This is a fork of the [Flutter wifi plugin](https://github.com/once10301/wifi) that looks unmaintained as of 2020/12/27.
+
+This fork adds the following features:
+- `connection` method: added Android 10 compatibility
+- `connection` method: fix on Android 8 when the device wasn't already connected to another Wi-Fi network
+- `connection` method: added support for open networks, just leave the `password` field null or empty (Android and iOS)
+- `list` method: added BSSID information (Android only)
+- `wifiEnabled` method: new! Checks whether the Wi-FI adapter is eanbled (Android only)
+
+## Setup
+Add this dependency to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  wifi:
+    git:
+      url: https://github.com/thearaks/wifi
+      ref: develop
+```
+
+Then run `pub upgrade` to fetch the latest commit.
+
+
 # wifi
 
 This plugin allows Flutter apps to get wifi ssid and list, connect wifi with ssid and password.
@@ -6,7 +31,7 @@ This plugin works Android.
 
 iOS later released.
 
-
+<br/>
 
 Sample usage to check current status:
 
