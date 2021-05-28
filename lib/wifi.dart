@@ -7,19 +7,19 @@ enum WifiState { error, success, already }
 class Wifi {
   static const MethodChannel _channel = const MethodChannel('plugins.ly.com/wifi');
 
-  static Future<String> get ssid async {
+  static Future<String?> get ssid async {
     return await _channel.invokeMethod('ssid');
   }
 
-  static Future<int> get level async {
+  static Future<int?> get level async {
     return await _channel.invokeMethod('level');
   }
 
-  static Future<String> get ip async {
+  static Future<String?> get ip async {
     return await _channel.invokeMethod('ip');
   }
 
-  static Future<bool> get wifiEnabled async {
+  static Future<bool?> get wifiEnabled async {
     return await _channel.invokeMethod('wifiEnabled');
   }
 
@@ -35,14 +35,14 @@ class Wifi {
     return resultList;
   }
 
-  static Future<WifiState> connection(String ssid, [String password]) async {
+  static Future<WifiState> connection(String ssid, [String? password]) async {
     final Map<String, dynamic> params = {
       'ssid': ssid
     };
     if (password != null && password.isNotEmpty) {
       params.addEntries([MapEntry('password', password)]);
     }
-    int state = await _channel.invokeMethod('connection', params);
+    int? state = await _channel.invokeMethod('connection', params);
     switch (state) {
       case 0:
         return WifiState.error;
@@ -57,9 +57,9 @@ class Wifi {
 }
 
 class WifiResult {
-  String ssid;
-  int level;
-  String bssid;
+  String? ssid;
+  int? level;
+  String? bssid;
 
   WifiResult(this.ssid, this.level, this.bssid);
 }
